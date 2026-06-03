@@ -22,10 +22,11 @@ class AppVpnService : VpnService() {
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
+    private var vpnInputStream: FileInputStream? = null
+    private var vpnOutputStream: FileOutputStream? = null
     private var tunReaderThread: Thread? = null
     private var running = false
 
-    // Канал отправки пакетов из TUN в olcrtc — будет заполнен из TunBridge
     var onPacket: ((ByteArray) -> Unit)? = null
 
     override fun onCreate() {
@@ -62,11 +63,11 @@ class AppVpnService : VpnService() {
         val builder = Builder()
             .setSession("VPN")
             .addAddress(VIRTUAL_ADDR, 24)
-            .addRoute("0.0.0.0", 0)          // весь IPv4 трафик через TUN
-            .addRoute("::", 0)               // весь IPv6
+            .addRoute("0.0.0.0", 0)
+            .addRoute("::", 0)
             .addDnsServer("8.8.8.8")
             .addDnsServer("8.8.4.4")
-            .addDisallowedApplication(packageName)  // само приложение не через TUN
+            .addDisallowedApplication(packageName)
             .setMtu(1500)
             .setBlocking(false)
 
@@ -76,16 +77,24 @@ class AppVpnService : VpnService() {
             return
         }
 
+        // Открываем потоки чтения и записи ОДИН РАЗ на весь жизненный цикл VPN
+        val fd = vpnInterface!!.fileDescriptor
+        vpnInputStream = FileInputStream(fd)
+        vpnOutputStream = FileOutputStream(fd)
+
         running = true
 
-        // Читаем пакеты из TUN и передаём в olcrtc через SOCKS5
         tunReaderThread = Thread {
-            val input = FileInputStream(vpnInterface!!.fileDescriptor)
+            val input = vpnInputStream!!
             val buffer = ByteArray(32768)
             while (running) {
                 val len = try { input.read(buffer) } catch (e: Exception) { break }
                 if (len > 0) {
-                    onPacket?.invoke(buffer.copyOf(len))
+                    val packet = buffer.copyOf(len)
+                    // Вызов из фонового потока — внутри sendPacketToFlutter
+                    // уже есть Handler для переключения на UI поток
+                    OlcrtcPlugin.instance.sendPacketToFlutter(packet)
+                    onPacket?.invoke(packet)
                 }
             }
             Log.i(TAG, "TUN reader thread stopped")
@@ -102,20 +111,32 @@ class AppVpnService : VpnService() {
         running = false
         tunReaderThread?.interrupt()
         tunReaderThread = null
-        vpnInterface?.close()
+
+        // Закрываем потоки и интерфейс
+        try { vpnInputStream?.close() } catch (e: Exception) { Log.w(TAG, "close input", e) }
+        vpnInputStream = null
+
+        try { vpnOutputStream?.close() } catch (e: Exception) { Log.w(TAG, "close output", e) }
+        vpnOutputStream = null
+
+        try { vpnInterface?.close() } catch (e: Exception) { Log.w(TAG, "close interface", e) }
         vpnInterface = null
+
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         Log.i(TAG, "VPN stopped")
     }
 
+    /**
+     * Запись пакета обратно в TUN-интерфейс.
+     * Вызывается из Flutter через MethodChannel (обычно из главного потока).
+     * Использует уже открытый vpnOutputStream, чтобы не создавать новый на каждый пакет.
+     */
     fun writePacket(packet: ByteArray) {
-        vpnInterface?.let {
-            try {
-                FileOutputStream(it.fileDescriptor).write(packet)
-            } catch (e: Exception) {
-                Log.e(TAG, "writePacket error", e)
-            }
+        try {
+            vpnOutputStream?.write(packet)
+        } catch (e: Exception) {
+            Log.e(TAG, "writePacket error", e)
         }
     }
 
@@ -127,16 +148,16 @@ class AppVpnService : VpnService() {
         )
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, NOTIF_CHANNEL_ID)
-                .setContentTitle("VPN активен")
-                .setContentText("Туннель работает")
+                .setContentTitle("VPN Подключен")
+                .setContentText("Защита активна")
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
                 .setContentIntent(pi)
                 .build()
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
-                .setContentTitle("VPN активен")
-                .setContentText("Туннель работает")
+                .setContentTitle("VPN Подключен")
+                .setContentText("Защита активна")
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
                 .setContentIntent(pi)
                 .build()

@@ -13,6 +13,8 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Передаём BinaryMessenger в VpnServiceInstance
+        VpnServiceInstance.flutterBinaryMessenger = flutterEngine.dartExecutor.binaryMessenger
         // Регистрируем оба плагина
         flutterEngine.plugins.add(OlcrtcPlugin())
 

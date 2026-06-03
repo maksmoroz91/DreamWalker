@@ -31,8 +31,6 @@ class TunnelInterface {
       // 1. Запускаем olcrtc туннель (WebRTC → Jitsi)
       await olcrtc.start();
 
-      // 2. Небольшая пауза чтобы olcrtc успел поднять SOCKS5
-      await Future.delayed(const Duration(seconds: 2));
 
       // 3. Запускаем Android TUN интерфейс
       await _vpnServiceChannel.invokeMethod('start');

@@ -20,28 +20,33 @@ class OlcrtcClient {
   }
 
   Future<void> start() async {
-    final roomId  = dotenv.env['JITSI_ROOM_ID'] ?? '';
-    final key     = dotenv.env['OLCRTC_KEY']    ?? '';
-    final carrier = dotenv.env['OLCRTC_CARRIER'] ?? 'jitsi';
+    try {
+      final roomId  = dotenv.env['JITSI_ROOM_ID'] ?? '';
+      final key     = dotenv.env['OLCRTC_KEY']    ?? '';
+      final carrier = dotenv.env['OLCRTC_CARRIER'] ?? 'jitsi';
 
-    if (roomId.isEmpty) throw Exception('JITSI_ROOM_ID не задан в .env');
-    if (key.isEmpty)    throw Exception('OLCRTC_KEY не задан в .env');
-    if (key.length != 64) throw Exception('OLCRTC_KEY должен быть 64 hex символа');
+      if (roomId.isEmpty) throw Exception('JITSI_ROOM_ID not set in .env');
+      if (key.isEmpty)    throw Exception('OLCRTC_KEY not set in .env');
+      if (key.length != 64) throw Exception('OLCRTC_KEY must be 64 hex chars');
 
-    // Берём ID устройства автоматически — не нужно задавать вручную
-    final clientId = await getDeviceId();
+      final clientId = await getDeviceId();
 
-    _logSub = _logChannel.receiveBroadcastStream().listen(
-      (event) { if (event is String) _logController.add(event); },
-      onError: (e) => _logController.addError(e),
-    );
+      _logSub = _logChannel.receiveBroadcastStream().listen(
+            (event) { if (event is String) _logController.add(event); },
+        onError: (e) => _logController.addError(e),
+      );
 
-    await _channel.invokeMethod('start', {
-      'carrier':  carrier,
-      'roomId':   roomId,
-      'clientId': clientId,
-      'key':      key,
-    });
+      await _channel.invokeMethod('start', {
+        'carrier':  carrier,
+        'roomId':   roomId,
+        'clientId': clientId,
+        'key':      key,
+      });
+    } catch (e, stack) {
+      print('OlcrtcClient.start error: $e');
+      print(stack);
+      rethrow;
+    }
   }
 
   Future<void> stop() async {

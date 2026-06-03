@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.example.vpn_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -15,8 +15,8 @@ android {
 
     defaultConfig {
         applicationId = "com.example.vpn_app"
-        minSdk = flutter.minSdkVersion  // gomobile требует минимум 21
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 24
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
