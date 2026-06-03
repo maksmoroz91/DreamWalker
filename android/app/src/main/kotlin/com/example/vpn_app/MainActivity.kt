@@ -12,31 +12,54 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        flutterEngine.plugins.add(VpnPlugin())
 
-        val prepareChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vpn_prepare")
-        prepareChannel.setMethodCallHandler { call, result ->
-            if (call.method == "prepare") {
-                val intent = VpnService.prepare(this)
-                if (intent != null) {
-                    pendingResult = result
-                    startActivityForResult(intent, VPN_REQUEST_CODE)
+        // Регистрируем оба плагина
+        flutterEngine.plugins.add(OlcrtcPlugin())
+
+        // Канал для запроса разрешения VPN
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vpn_prepare")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "prepare") {
+                    val intent = VpnService.prepare(this)
+                    if (intent != null) {
+                        pendingResult = result
+                        startActivityForResult(intent, VPN_REQUEST_CODE)
+                    } else {
+                        result.success(true)
+                    }
                 } else {
-                    result.success(true)
+                    result.notImplemented()
                 }
-            } else {
-                result.notImplemented()
             }
-        }
+
+        // Канал для управления VpnService (start/stop TUN интерфейса)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vpn_service")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        startService(
+                            Intent(this, AppVpnService::class.java).apply {
+                                action = "CONNECT"
+                            }
+                        )
+                        result.success(true)
+                    }
+                    "stop" -> {
+                        startService(
+                            Intent(this, AppVpnService::class.java).apply {
+                                action = "DISCONNECT"
+                            }
+                        )
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == VPN_REQUEST_CODE) {
-            if (resultCode == RESULT_OK) {
-                pendingResult?.success(true)
-            } else {
-                pendingResult?.success(false)
-            }
+            pendingResult?.success(resultCode == RESULT_OK)
             pendingResult = null
         } else {
             super.onActivityResult(requestCode, resultCode, data)
