@@ -12,9 +12,9 @@ class OlcrtcClient {
   Stream<String> get logs => _logController.stream;
 
   static const socksHost = '127.0.0.1';
-  static const socksPort = 8808;
+  static const socksPort = 10808;
+  // static const socksPort = 8808;
 
-  /// Получает уникальный ID этого устройства (ANDROID_ID)
   Future<String> getDeviceId() async {
     return await _channel.invokeMethod<String>('getDeviceId') ?? 'device-unknown';
   }
@@ -37,11 +37,15 @@ class OlcrtcClient {
       );
 
       await _channel.invokeMethod('start', {
-        'carrier':  carrier,
-        'roomId':   roomId,
-        'clientId': clientId,
-        'key':      key,
+        'carrier':         carrier,
+        'roomId':          roomId,
+        'clientId':        clientId,
+        'key':             key,
+        'turnUrl':         dotenv.env['OLCRTC_TURN_URL'] ?? '',
+        'turnUser':        dotenv.env['OLCRTC_TURN_USER'] ?? '',
+        'turnCredential':  dotenv.env['OLCRTC_TURN_CREDENTIAL'] ?? '',
       });
+
     } catch (e, stack) {
       print('OlcrtcClient.start error: $e');
       print(stack);
