@@ -19,6 +19,7 @@ class AppVpnService : VpnService() {
         private const val NOTIF_ID = 1
         private const val SOCKS_SERVER = "127.0.0.1"
         private const val SOCKS_PORT = 10808
+        private const val MTU = 1500
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -76,11 +77,12 @@ class AppVpnService : VpnService() {
         running = true
 
         tun2socks = Tun2SocksRunner(this)
-//        tun2socks?.start(
-//            tunFd = vpnInterface!!,
-//            socksServer = SOCKS_SERVER,
-//            socksPort = SOCKS_PORT
-//        )
+        tun2socks?.start(
+            tunFd = vpnInterface!!,
+            socksHost = SOCKS_SERVER,
+            socksPort = SOCKS_PORT,
+            mtu = MTU
+        )
 
         Log.i(TAG, "VPN + tun2socks started")
     }
