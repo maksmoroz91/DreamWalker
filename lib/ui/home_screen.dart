@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import '../vpn/olcrtc_client.dart';
 import '../vpn/tunnel_interface.dart';
 
@@ -84,7 +86,32 @@ class _HomeScreenState extends State<HomeScreen> {
   void _copyLogs() {
     final text = _logs.join('\n');
     Clipboard.setData(ClipboardData(text: text));
-    _showSnack('Логи скопированы (${_logs.length} строк)');
+    _showSnack('Скопировано в буфер (${_logs.length} строк)');
+  }
+
+  Future<void> _saveLogsToFile() async {
+    if (_logs.isEmpty) {
+      _showSnack('Нет логов для сохранения');
+      return;
+    }
+
+    try {
+      var directory = Directory('/storage/emulated/0/Download');
+      if (!await directory.exists()) {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
+      final fileName = 'vpn_logs_$timestamp.txt';
+      final filePath = '${directory.path}/$fileName';
+
+      final file = File(filePath);
+      await file.writeAsString(_logs.join('\n'));
+
+      _showSnack('Логи сохранены: $fileName\nПуть: ${directory.path}');
+    } catch (e) {
+      _showSnack('Ошибка сохранения: $e');
+    }
   }
 
   void _clearLogs() {
@@ -106,12 +133,17 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final statusColor = _isConnected ? Colors.green : Colors.grey;
-    final statusText  = _isConnected ? 'CONNECTED' : 'DISCONNECTED';
+    final statusText = _isConnected ? 'CONNECTED' : 'DISCONNECTED';
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('VPN'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.save),
+            tooltip: 'Сохранить логи в файл',
+            onPressed: _logs.isEmpty ? null : _saveLogsToFile,
+          ),
           IconButton(
             icon: const Icon(Icons.copy),
             tooltip: 'Копировать логи',
@@ -159,10 +191,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text('${_logs.length} строк',
                       style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                  GestureDetector(
-                    onTap: _copyLogs,
-                    child: const Text('Копировать все',
-                        style: TextStyle(fontSize: 10, color: Colors.blue)),
+                  Row(
+                    children: [
+                      GestureDetector(
+                        onTap: _saveLogsToFile,
+                        child: const Text('💾 Сохранить',
+                            style: TextStyle(fontSize: 10, color: Colors.green)),
+                      ),
+                      const SizedBox(width: 16),
+                      GestureDetector(
+                        onTap: _copyLogs,
+                        child: const Text('📋 Копировать',
+                            style: TextStyle(fontSize: 10, color: Colors.blue)),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -171,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: _logs.isEmpty
                 ? const Center(
-                child: Text('Logs will appear here',
+                child: Text('Логи появятся здесь',
                     style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
               controller: _scrollController,
@@ -182,11 +224,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: TextStyle(
                   fontSize: 10,
                   fontFamily: 'monospace',
-                  color: _logs[i].contains('ERROR') || _logs[i].contains('error')
+                  color: _logs[i].contains('ERROR') ||
+                      _logs[i].contains('error')
                       ? Colors.red
                       : _logs[i].contains('WARN')
                       ? Colors.orange
-                      : _logs[i].contains('connected') || _logs[i].contains('opened')
+                      : _logs[i].contains('connected') ||
+                      _logs[i].contains('opened')
                       ? Colors.green
                       : Colors.black87,
                 ),

@@ -3,10 +3,6 @@ package com.example.vpn_app
 import io.flutter.plugin.common.BinaryMessenger
 import java.lang.ref.WeakReference
 
-/**
- * Синглтон для передачи ссылки на VpnService в OlcrtcPlugin.
- * WeakReference — чтобы не держать сервис живым искусственно.
- */
 object VpnServiceInstance {
     private var ref: WeakReference<AppVpnService>? = null
     var flutterBinaryMessenger: BinaryMessenger? = null

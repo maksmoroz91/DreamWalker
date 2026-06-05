@@ -13,7 +13,6 @@ class OlcrtcClient {
 
   static const socksHost = '127.0.0.1';
   static const socksPort = 10808;
-  // static const socksPort = 8808;
 
   Future<String> getDeviceId() async {
     return await _channel.invokeMethod<String>('getDeviceId') ?? 'device-unknown';
@@ -41,9 +40,6 @@ class OlcrtcClient {
         'roomId':          roomId,
         'clientId':        clientId,
         'key':             key,
-        'turnUrl':         dotenv.env['OLCRTC_TURN_URL'] ?? '',
-        'turnUser':        dotenv.env['OLCRTC_TURN_USER'] ?? '',
-        'turnCredential':  dotenv.env['OLCRTC_TURN_CREDENTIAL'] ?? '',
       });
 
     } catch (e, stack) {

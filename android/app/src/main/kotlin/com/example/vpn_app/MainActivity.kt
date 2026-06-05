@@ -13,12 +13,12 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Передаём BinaryMessenger в VpnServiceInstance
+
         VpnServiceInstance.flutterBinaryMessenger = flutterEngine.dartExecutor.binaryMessenger
-        // Регистрируем оба плагина
+
         flutterEngine.plugins.add(OlcrtcPlugin())
 
-        // Канал для запроса разрешения VPN
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vpn_prepare")
             .setMethodCallHandler { call, result ->
                 if (call.method == "prepare") {
@@ -34,7 +34,6 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        // Канал для управления VpnService (start/stop TUN интерфейса)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vpn_service")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

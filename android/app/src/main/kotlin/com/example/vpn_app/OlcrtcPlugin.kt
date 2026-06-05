@@ -22,7 +22,6 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private var vpnEventSink: EventChannel.EventSink? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    // Отдельный поток для блокирующих операций olcrtc
     private val bgExecutor = Executors.newSingleThreadExecutor()
 
     companion object {
@@ -50,9 +49,6 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
     }
 
-    fun sendPacketToFlutter(packet: ByteArray) {
-        mainHandler.post { vpnEventSink?.success(packet) }
-    }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         instance = this
@@ -80,21 +76,6 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
         Mobile.setLogWriter(logWriter)
         Mobile.setProtector(socketProtector)
-
-        MethodChannel(binding.binaryMessenger, "vpn_channel")
-            .setMethodCallHandler { call, result ->
-                if (call.method == "write") {
-                    val packet = call.argument<ByteArray>("packet")
-                    if (packet != null) {
-                        VpnServiceInstance.get()?.writePacket(packet)
-                        result.success(null)
-                    } else {
-                        result.error("INVALID", "No packet", null)
-                    }
-                } else {
-                    result.notImplemented()
-                }
-            }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -125,10 +106,6 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     return
                 }
 
-                val turnUrl  = call.argument<String>("turnUrl")        ?: ""
-                val turnUser = call.argument<String>("turnUser")       ?: ""
-                val turnCred = call.argument<String>("turnCredential") ?: ""
-                val turnAuth = if (turnUser.isNotEmpty()) "$turnUser:$turnCred" else turnCred
 
                 bgExecutor.submit {
                     try {
@@ -138,8 +115,8 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                         Mobile.setTransport("datachannel")
                         Mobile.setSocksListenHost("127.0.0.1")
 
-//                        Mobile.start(carrier, roomId, clientId, key, 8808L, turnUrl, turnAuth)
-                        Mobile.start(carrier, roomId, clientId, key, 10808L, turnUrl, turnAuth)
+
+                        Mobile.start(carrier, roomId, clientId, key, 10808L, "", "")
                         Log.i(TAG, "olcrtc start() called, waiting for ready...")
 
                         try {
@@ -149,7 +126,7 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                             Log.w(TAG, "waitReady error: ${e.message}")
                         }
 
-                        Log.i(TAG, "olcrtc started: carrier=$carrier clientId=$clientId turnUrl=$turnUrl")
+                        Log.i(TAG, "olcrtc started: carrier=$carrier clientId=$clientId")
                         mainHandler.post { result.success(true) }
                     } catch (e: Exception) {
                         Log.e(TAG, "olcrtc start failed", e)
