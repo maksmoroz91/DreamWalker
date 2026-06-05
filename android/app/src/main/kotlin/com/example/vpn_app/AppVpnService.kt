@@ -62,8 +62,10 @@ class AppVpnService : VpnService() {
             .addAddress(VIRTUAL_ADDR, 24)
             .addRoute("0.0.0.0", 0)
             .addRoute("::", 0)
-            .addDnsServer("8.8.8.8")
-            .addDnsServer("8.8.4.4")
+//            .addDnsServer("8.8.8.8")
+//            .addDnsServer("8.8.4.4")
+            .addDnsServer("1.1.1.1")
+            .addDnsServer("1.0.0.1")
             .addDisallowedApplication(packageName)
             .setMtu(1500)
             .setBlocking(true)  // ВАЖНО: true для tun2socks
@@ -94,7 +96,12 @@ class AppVpnService : VpnService() {
         tun2socks = null
 
 
-        try { vpnInterface?.close() } catch (e: Exception) { Log.w(TAG, "close interface", e) }
+        try {
+            vpnInterface?.close()
+            Log.i(TAG, "TUN interface closed")
+        } catch (e: Exception) {
+            Log.w(TAG, "close interface", e)
+        }
         vpnInterface = null
 
         stopForeground(STOP_FOREGROUND_REMOVE)

@@ -138,7 +138,9 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "stop" -> {
                 bgExecutor.submit {
                     try {
+                        Log.i(TAG, "Stopping olcrtc...")
                         Mobile.stop()
+                        Log.i(TAG, "olcrtc stopped")
                         mainHandler.post { result.success(true) }
                     } catch (e: Exception) {
                         Log.e(TAG, "stop error", e)
