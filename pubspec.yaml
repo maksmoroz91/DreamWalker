@@ -1,5 +1,5 @@
-name: vpn_app
-description: "A new Flutter project."
+name: dream_walker
+description: "VPN client with WebRTC tunnel"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -25,16 +25,19 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  flutter_webrtc: ^1.4.1
-  web_socket_channel: ^3.0.0
   flutter_dotenv: ^5.1.0
-  shared_preferences: ^2.5.5
   path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: "^0.13.1"
+
+flutter_launcher_icons:
+  android: true
+  image_path: "app_icons/icon.png"
+  min_sdk_android: 21
 
 flutter:
   uses-material-design: true

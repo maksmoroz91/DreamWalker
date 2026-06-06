@@ -58,17 +58,15 @@ class AppVpnService : VpnService() {
         }
 
         val builder = Builder()
-            .setSession("VPN")
+            .setSession("DreamWalker")
             .addAddress(VIRTUAL_ADDR, 24)
             .addRoute("0.0.0.0", 0)
             .addRoute("::", 0)
-//            .addDnsServer("8.8.8.8")
-//            .addDnsServer("8.8.4.4")
             .addDnsServer("1.1.1.1")
             .addDnsServer("1.0.0.1")
             .addDisallowedApplication(packageName)
             .setMtu(1500)
-            .setBlocking(true)  // ВАЖНО: true для tun2socks
+            .setBlocking(true)
 
         vpnInterface = builder.establish() ?: run {
             Log.e(TAG, "VPN interface creation failed")

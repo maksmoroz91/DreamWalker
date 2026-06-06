@@ -101,36 +101,41 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 val clientId = call.argument<String>("clientId") ?: ""
                 val key      = call.argument<String>("key")      ?: ""
 
-                if (roomId.isEmpty() || key.isEmpty() || clientId.isEmpty()) {
-                    result.error("INVALID_ARGS", "roomId, clientId and key are required", null)
-                    return
-                }
-
-
                 bgExecutor.submit {
-                    try {
-                        try { Mobile.stop() } catch (e: Exception) {}
+                    var retries = 0
+                    val maxRetries = 3
 
-                        Mobile.setDebug(true)
-                        Mobile.setTransport("datachannel")
-                        Mobile.setSocksListenHost("127.0.0.1")
-
-
-                        Mobile.start(carrier, roomId, clientId, key, 10808L, "", "")
-                        Log.i(TAG, "olcrtc start() called, waiting for ready...")
-
+                    while (retries < maxRetries) {
                         try {
-                            Mobile.waitReady(60000L)
-                            Log.i(TAG, "olcrtc waitReady completed — SOCKS5 ready on :8808")
-                        } catch (e: Exception) {
-                            Log.w(TAG, "waitReady error: ${e.message}")
-                        }
+                            Log.i(TAG, "olcrtc start attempt ${retries + 1}/$maxRetries")
 
-                        Log.i(TAG, "olcrtc started: carrier=$carrier clientId=$clientId")
-                        mainHandler.post { result.success(true) }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "olcrtc start failed", e)
-                        mainHandler.post { result.error("START_FAILED", e.message, null) }
+                            try { Mobile.stop() } catch (e: Exception) {}
+                            Thread.sleep(1000)
+
+                            Mobile.setDebug(true)
+                            Mobile.setTransport("datachannel")
+                            Mobile.setSocksListenHost("127.0.0.1")
+                            Mobile.start(carrier, roomId, clientId, key, 10808L, "", "")
+
+                            Log.i(TAG, "olcrtc start() called, waiting for ready...")
+                            Mobile.waitReady(60000L)
+
+                            Log.i(TAG, "olcrtc started successfully")
+                            mainHandler.post { result.success(true) }
+                            return@submit
+
+                        } catch (e: Exception) {
+                            Log.e(TAG, "olcrtc start failed (attempt ${retries + 1})", e)
+                            retries++
+
+                            if (retries < maxRetries) {
+                                Log.i(TAG, "Retrying in 3 seconds...")
+                                Thread.sleep(3000)
+                            } else {
+                                Log.e(TAG, "Max retries reached")
+                                mainHandler.post { result.error("START_FAILED", e.message, null) }
+                            }
+                        }
                     }
                 }
             }

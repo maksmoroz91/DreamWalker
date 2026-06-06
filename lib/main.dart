@@ -12,7 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'WebRTC VPN',
+      title: 'DreamWalker',
       home: HomeScreen(),
     );
   }

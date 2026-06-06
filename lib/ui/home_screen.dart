@@ -137,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('VPN'),
+        title: const Text('DreamWalker'),
         actions: [
           IconButton(
             icon: const Icon(Icons.save),

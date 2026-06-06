@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
-        android:label="VPN"
+        android:label="DreamWalker"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:usesCleartextTraffic="false">
