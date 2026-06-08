@@ -102,7 +102,6 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
         }
 
-        setState(() => _logs.clear());
         final ok = await _tunnel.start();
         if (ok) {
           setState(() => _isConnected = true);
