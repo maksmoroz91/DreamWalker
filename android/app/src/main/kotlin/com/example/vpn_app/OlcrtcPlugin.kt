@@ -31,14 +31,29 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         private const val LIVENESS_INTERVAL_MS = 30_000L
         private const val LIVENESS_TIMEOUT_MS = 90_000L
         private const val LIVENESS_FAILURES = 3L
+        private const val RECOVERY_COOLDOWN_MS = 60_000L
         lateinit var instance: OlcrtcPlugin
             private set
     }
 
+    private data class OlcrtcStartConfig(
+        val carrier: String,
+        val roomId: String,
+        val clientId: String,
+        val key: String,
+    )
+
+    @Volatile
+    private var currentStartConfig: OlcrtcStartConfig? = null
+    private val recoveryLock = Any()
+    private var recoveryInProgress = false
+    private var lastRecoveryAtMs = 0L
+
     private val logWriter = object : LogWriter {
         override fun writeLog(line: String?) {
             line?.let {
-                mainHandler.post { logSink?.success(it) }
+                emitLog(it)
+                handleNativeLogLine(it)
             }
         }
     }
@@ -109,6 +124,9 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 val roomId   = call.argument<String>("roomId")   ?: ""
                 val clientId = call.argument<String>("clientId") ?: ""
                 val key      = call.argument<String>("key")      ?: ""
+                val config = OlcrtcStartConfig(carrier, roomId, clientId, key)
+                currentStartConfig = null
+                resetRecoveryState()
 
                 bgExecutor.submit {
                     var retries = 0
@@ -118,22 +136,12 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                         try {
                             Log.i(TAG, "olcrtc start attempt ${retries + 1}/$maxRetries")
 
-                            try { Mobile.stop() } catch (e: Exception) {}
+                            stopNativeQuietly()
                             Thread.sleep(1000)
 
-                            Mobile.setDebug(true)
-                            Mobile.setTransport("datachannel")
-                            Mobile.setSocksListenHost("127.0.0.1")
-                            Mobile.setLivenessOptions(
-                                LIVENESS_INTERVAL_MS,
-                                LIVENESS_TIMEOUT_MS,
-                                LIVENESS_FAILURES
-                            )
-                            Mobile.start(carrier, roomId, clientId, key, SOCKS_PORT, "", "")
+                            startOlcrtc(config)
 
-                            Log.i(TAG, "olcrtc start() called, waiting for ready...")
-                            Mobile.waitReady(READY_TIMEOUT_MS)
-
+                            currentStartConfig = config
                             Log.i(TAG, "olcrtc started successfully")
                             mainHandler.post { result.success(true) }
                             return@submit
@@ -147,6 +155,8 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                                 Thread.sleep(3000)
                             } else {
                                 Log.e(TAG, "Max retries reached")
+                                currentStartConfig = null
+                                resetRecoveryState()
                                 mainHandler.post { result.error("START_FAILED", e.message, null) }
                             }
                         }
@@ -155,6 +165,8 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             }
 
             "stop" -> {
+                currentStartConfig = null
+                resetRecoveryState()
                 bgExecutor.submit {
                     try {
                         stopOlcrtc(OlcrtcStopReason.UserRequest)
@@ -172,14 +184,137 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
     }
 
+    private fun startOlcrtc(config: OlcrtcStartConfig) {
+        Mobile.setDebug(true)
+        Mobile.setTransport("datachannel")
+        Mobile.setSocksListenHost("127.0.0.1")
+        Mobile.setLivenessOptions(
+            LIVENESS_INTERVAL_MS,
+            LIVENESS_TIMEOUT_MS,
+            LIVENESS_FAILURES
+        )
+        Mobile.start(
+            config.carrier,
+            config.roomId,
+            config.clientId,
+            config.key,
+            SOCKS_PORT,
+            "",
+            ""
+        )
+
+        Log.i(TAG, "olcrtc start() called, waiting for ready...")
+        Mobile.waitReady(READY_TIMEOUT_MS)
+    }
+
     private fun stopOlcrtc(reason: OlcrtcStopReason) {
         if (!OlcrtcLifecyclePolicy.shouldStopNative(reason)) {
             Log.i(TAG, "Skipping olcrtc stop for $reason")
             return
         }
 
+        currentStartConfig = null
+        resetRecoveryState()
         Log.i(TAG, "Stopping olcrtc: $reason")
         Mobile.stop()
         Log.i(TAG, "olcrtc stopped")
+    }
+
+    private fun handleNativeLogLine(line: String) {
+        if (!OlcrtcRecoveryPolicy.shouldRestartNative(line)) return
+        val reason = OlcrtcRecoveryPolicy.restartReason(line) ?: return
+        val config = currentStartConfig ?: run {
+            Log.w(TAG, "Ignoring olcrtc recovery signal without start config: $reason")
+            return
+        }
+        if (!claimRecoverySlot(reason)) return
+
+        bgExecutor.submit {
+            if (!isNativeRunningForRecovery()) {
+                finishRecoverySlot()
+                return@submit
+            }
+            recoverOlcrtc(config, reason)
+        }
+    }
+
+    private fun claimRecoverySlot(reason: String): Boolean {
+        synchronized(recoveryLock) {
+            val now = System.currentTimeMillis()
+            if (recoveryInProgress) {
+                Log.i(TAG, "Skipping olcrtc recovery while another restart is running: $reason")
+                return false
+            }
+            if (now - lastRecoveryAtMs < RECOVERY_COOLDOWN_MS) {
+                Log.i(TAG, "Skipping olcrtc recovery during cooldown: $reason")
+                return false
+            }
+
+            recoveryInProgress = true
+            lastRecoveryAtMs = now
+            return true
+        }
+    }
+
+    private fun isNativeRunningForRecovery(): Boolean {
+        return try {
+            Mobile.isRunning()
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to check olcrtc state for recovery", e)
+            false
+        }
+    }
+
+    private fun recoverOlcrtc(config: OlcrtcStartConfig, reason: String) {
+        try {
+            if (currentStartConfig != config) {
+                Log.i(TAG, "Canceled olcrtc recovery because tunnel config changed")
+                return
+            }
+
+            Log.w(TAG, "Restarting olcrtc after native reconnect failure: $reason")
+            emitLog("olcrtc reconnect failed; restarting native tunnel ($reason)")
+            Mobile.stop()
+            Thread.sleep(1000)
+
+            if (currentStartConfig != config) {
+                Log.i(TAG, "Canceled olcrtc recovery because tunnel was stopped")
+                return
+            }
+
+            startOlcrtc(config)
+            Log.i(TAG, "olcrtc restarted after native reconnect failure")
+            emitLog("olcrtc restarted after reconnect failure")
+        } catch (e: Exception) {
+            Log.e(TAG, "olcrtc recovery restart failed", e)
+            val message = e.message ?: e.javaClass.simpleName
+            emitLog("olcrtc restart after reconnect failure failed: $message")
+        } finally {
+            finishRecoverySlot()
+        }
+    }
+
+    private fun stopNativeQuietly() {
+        try {
+            Mobile.stop()
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun resetRecoveryState() {
+        synchronized(recoveryLock) {
+            recoveryInProgress = false
+            lastRecoveryAtMs = 0L
+        }
+    }
+
+    private fun finishRecoverySlot() {
+        synchronized(recoveryLock) {
+            recoveryInProgress = false
+        }
+    }
+
+    private fun emitLog(line: String) {
+        mainHandler.post { logSink?.success(line) }
     }
 }
