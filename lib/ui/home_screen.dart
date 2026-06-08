@@ -124,19 +124,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       } else {
         final granted = await _requestVpnPermission();
         if (!granted) {
-          _showSnack('VPN permission denied');
+          _showSnack('Разрешите VPN в настройках системы');
           return;
         }
 
         final ok = await _tunnel.start();
         if (ok) {
           setState(() => _isConnected = true);
-        } else {
-          _showSnack('Failed to start tunnel');
         }
       }
+
     } catch (e) {
-      _showSnack('Error: $e');
+      final errorMsg = e.toString().toLowerCase();
+
+      if (errorMsg.contains('invalid room url')) {
+        _showSnack('Неверная ссылка');
+      } else {
+        _showSnack('Ошибка подключения: ${e.toString().replaceAll("Exception: ", "")}');
+      }
+
     } finally {
       setState(() => _isLoading = false);
     }
@@ -155,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _copyLogs() {
     final text = _logs.join('\n');
     Clipboard.setData(ClipboardData(text: text));
-    _showSnack('Скопировано в буфер (${_logs.length} строк)');
+    _showSnack('Скопировано в буфер');
   }
 
   Future<void> _saveLogsToFile() async {
@@ -195,17 +201,56 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: cardBg,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: BorderSide(color: moonlight.withValues(alpha: 0.5)),
+    final overlay = Overlay.of(context);
+    final overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 70,
+        left: 16,
+        right: 16,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: moonlight.withValues(alpha: 0.5)),
+              boxShadow: [
+                BoxShadow(
+                  color: neonPurple.withValues(alpha: 0.2),
+                  blurRadius: 10,
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Text(
+              msg,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ),
         ),
       ),
     );
+
+    overlay.insert(overlayEntry);
+
+    Future.delayed(const Duration(seconds: 3), () {
+      if (overlayEntry.mounted) {
+        overlayEntry.remove();
+      }
+    });
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (data?.text == null || data!.text!.trim().isEmpty) {
+      _showSnack('Буфер обмена пуст');
+      return;
+    }
+
+    final roomId = data.text!.trim();
+    await _olcrtc.saveCustomRoomId(roomId);
+    _showSnack('Ссылка сохранена');
   }
 
   @override
@@ -242,6 +287,38 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ),
         elevation: 0,
         iconTheme: IconThemeData(color: moonlight),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.add, color: moonlight, size: 26),
+            color: cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: moonlight.withValues(alpha: 0.3)),
+            ),
+            onSelected: (value) {
+              if (value == 'paste') {
+                _pasteFromClipboard();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                value: 'paste',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.content_paste, color: moonlight, size: 18),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Вставить из буфера обмена',
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Container(
         decoration: BoxDecoration(

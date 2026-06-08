@@ -19,7 +19,7 @@ class TunnelInterface {
     } catch (e) {
       print('TunnelInterface start error: $e');
       await stop();
-      return false;
+      rethrow;
     }
   }
 
