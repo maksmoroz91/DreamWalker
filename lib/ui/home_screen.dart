@@ -6,11 +6,14 @@ import '../vpn/olcrtc_client.dart';
 import '../vpn/tunnel_interface.dart';
 
 class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
   @override
+  // ignore: library_private_types_in_public_api
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late OlcrtcClient _olcrtc;
   late TunnelInterface _tunnel;
 
@@ -20,42 +23,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<String> _logs = [];
   final ScrollController _scrollController = ScrollController();
-
-
   bool _userScrolledUp = false;
 
+  late AnimationController _glowController;
+  late Animation<double> _glowAnimation;
 
-  bool _isImportantLog(String line) {
-    final lower = line.toLowerCase();
-
-    if (lower.contains('error') || lower.contains('fail') || lower.contains('exception')) {
-      return true;
-    }
-
-    if (lower.contains('session opened') || lower.contains('session closed')) return true;
-    if (lower.contains('socks5 server listening')) return true;
-    if (lower.contains('bridge open')) return true;
-
-    if (lower.contains('ice state: connected')) return true;
-    if (lower.contains('pc state: connected')) return true;
-    if (lower.contains('handshake completed')) return true;
-
-    if (lower.contains('vpn started') || lower.contains('vpn stopped')) return true;
-    if (lower.contains('tun2socks started') || lower.contains('tun2socks stopped')) return true;
-    if (lower.contains('olcrtc started') || lower.contains('olcrtc stopped')) return true;
-
-    if (lower.contains('waitready completed') || lower.contains('waitready error')) return true;
-
-    if (lower.contains('reconnect') || lower.contains('rejoin')) return true;
-
-    return false;
-  }
+  static const Color moonlight = Color(0xFFD0E8FF);
+  static const Color neonCyan = Color(0xFF00FFFF);
+  static const Color neonPurple = Color(0xFFFF00FF);
+  static const Color darkBg = Color(0xFF0A0E27);
+  static const Color cardBg = Color(0xFF151B3D);
 
   @override
   void initState() {
     super.initState();
     _olcrtc = OlcrtcClient();
     _tunnel = TunnelInterface(_olcrtc);
+
+    _glowController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _glowAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
+    );
 
     _scrollController.addListener(() {
       if (_scrollController.hasClients) {
@@ -85,6 +77,40 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _glowController.dispose();
+    _scrollController.dispose();
+    _tunnel.dispose();
+    super.dispose();
+  }
+
+  bool _isImportantLog(String line) {
+    final lower = line.toLowerCase();
+
+    if (lower.contains('error') || lower.contains('fail') || lower.contains('exception')) {
+      return true;
+    }
+
+    if (lower.contains('session opened') || lower.contains('session closed')) return true;
+    if (lower.contains('socks5 server listening')) return true;
+    if (lower.contains('bridge open')) return true;
+
+    if (lower.contains('ice state: connected')) return true;
+    if (lower.contains('pc state: connected')) return true;
+    if (lower.contains('handshake completed')) return true;
+
+    if (lower.contains('vpn started') || lower.contains('vpn stopped')) return true;
+    if (lower.contains('tun2socks started') || lower.contains('tun2socks stopped')) return true;
+    if (lower.contains('olcrtc started') || lower.contains('olcrtc stopped')) return true;
+
+    if (lower.contains('waitready completed') || lower.contains('waitready error')) return true;
+
+    if (lower.contains('reconnect') || lower.contains('rejoin')) return true;
+
+    return false;
   }
 
   Future<void> _toggle() async {
@@ -169,64 +195,187 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showSnack(String msg) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    _tunnel.dispose();
-    super.dispose();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: cardBg,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: moonlight.withValues(alpha: 0.5)),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _isConnected ? Colors.green : Colors.grey;
-    final statusText = _isConnected ? 'CONNECTED' : 'DISCONNECTED';
-
     return Scaffold(
+      backgroundColor: darkBg,
       appBar: AppBar(
-        title: const Text('DreamWalker'),
+        title: Text(
+          'DreamWalker',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: moonlight,
+            shadows: [
+              Shadow(
+                color: moonlight.withValues(alpha: 0.8),
+                blurRadius: 10,
+              ),
+              Shadow(
+                color: neonPurple.withValues(alpha: 0.5),
+                blurRadius: 15,
+              ),
+            ],
+          ),
+        ),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [darkBg, cardBg],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        elevation: 0,
+        iconTheme: IconThemeData(color: moonlight),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.circle, color: statusColor, size: 20),
-                  const SizedBox(height: 8),
-                  Text(
-                    statusText,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 24),
-                  _isLoading
-                      ? const CircularProgressIndicator()
-                      : ElevatedButton(
-                    onPressed: _toggle,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                      _isConnected ? Colors.red : Colors.blue,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 48, vertical: 16),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              darkBg,
+              cardBg,
+              darkBg,
+            ],
+          ),
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AnimatedBuilder(
+                      animation: _glowAnimation,
+                      builder: (context, child) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: _isConnected
+                                ? [
+                              BoxShadow(
+                                color: moonlight.withValues(alpha: _glowAnimation.value * 0.8),
+                                blurRadius: 30 * _glowAnimation.value,
+                                spreadRadius: 10 * _glowAnimation.value,
+                              ),
+                              BoxShadow(
+                                color: neonPurple.withValues(alpha: _glowAnimation.value * 0.6),
+                                blurRadius: 20 * _glowAnimation.value,
+                                spreadRadius: 5 * _glowAnimation.value,
+                              ),
+                            ]
+                                : [],
+                          ),
+                          child: Icon(
+                            Icons.circle,
+                            color: _isConnected ? moonlight : Colors.grey.shade700,
+                            size: 24,
+                          ),
+                        );
+                      },
                     ),
-                    child: Text(
-                      _isConnected ? 'Disconnect' : 'Connect',
-                      style: const TextStyle(
-                          fontSize: 18, color: Colors.white),
+                    const SizedBox(height: 16),
+                    Text(
+                      _isConnected ? 'CONNECTED' : 'DISCONNECTED',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2,
+                        color: _isConnected ? moonlight : Colors.grey.shade600,
+                        shadows: _isConnected
+                            ? [
+                          Shadow(
+                            color: moonlight.withValues(alpha: 0.8),
+                            blurRadius: 10,
+                          ),
+                        ]
+                            : [],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 40),
+                    _isLoading
+                        ? CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(neonCyan),
+                    )
+                        : _buildNeonButton(),
+                  ],
+                ),
+              ),
+            ),
+            if (_logs.isNotEmpty || _isLogsExpanded) _buildLogsPanel(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNeonButton() {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: LinearGradient(
+          colors: _isConnected
+              ? [Colors.red.shade700, Colors.red.shade900]
+              : [neonCyan, neonPurple],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: _isConnected
+            ? [
+          BoxShadow(
+            color: Colors.red.withValues(alpha: 0.5),
+            blurRadius: 20,
+            spreadRadius: 5,
+          ),
+        ]
+            : [
+          BoxShadow(
+            color: neonCyan.withValues(alpha: 0.5),
+            blurRadius: 20,
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: neonPurple.withValues(alpha: 0.3),
+            blurRadius: 30,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _toggle,
+          borderRadius: BorderRadius.circular(30),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 18),
+            child: Text(
+              _isConnected ? 'DISCONNECT' : 'CONNECT',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                letterSpacing: 1.5,
               ),
             ),
           ),
-
-          if (_logs.isNotEmpty || _isLogsExpanded) _buildLogsPanel(),
-        ],
+        ),
       ),
     );
   }
@@ -234,13 +383,20 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildLogsPanel() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: cardBg.withValues(alpha: 0.9),
         border: Border(
           top: BorderSide(
-            color: Colors.grey.shade400,
+            color: moonlight.withValues(alpha: 0.3),
             width: 1,
           ),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: neonPurple.withValues(alpha: 0.1),
+            blurRadius: 10,
+            spreadRadius: 0,
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -263,79 +419,65 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               });
             },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
                   Icon(
                     _isLogsExpanded
                         ? Icons.keyboard_arrow_down
                         : Icons.keyboard_arrow_up,
-                    color: Colors.grey.shade700,
-                    size: 20,
+                    color: moonlight,
+                    size: 22,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   const Text(
                     'Логи',
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
                     ),
                   ),
                 ],
               ),
             ),
           ),
-
           if (_isLogsExpanded) ...[
-            Padding(
-              padding: const EdgeInsets.only(left: 16, top: 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '${_logs.length} строк',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ),
-            ),
-
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              color: Colors.grey.shade200,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              color: darkBg.withValues(alpha: 0.5),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton.icon(
+                  _buildNeonIconButton(
+                    icon: Icons.save,
+                    label: 'Сохранить',
                     onPressed: _logs.isEmpty ? null : _saveLogsToFile,
-                    icon: const Icon(Icons.save, size: 16),
-                    label: const Text('Сохранить',
-                        style: TextStyle(fontSize: 12)),
                   ),
-                  TextButton.icon(
+                  const SizedBox(width: 8),
+                  _buildNeonIconButton(
+                    icon: Icons.copy,
+                    label: 'Копировать',
                     onPressed: _logs.isEmpty ? null : _copyLogs,
-                    icon: const Icon(Icons.copy, size: 16),
-                    label: const Text('Копировать',
-                        style: TextStyle(fontSize: 12)),
                   ),
-                  TextButton.icon(
+                  const SizedBox(width: 8),
+                  _buildNeonIconButton(
+                    icon: Icons.delete_outline,
+                    label: 'Очистить',
                     onPressed: _logs.isEmpty ? null : _clearLogs,
-                    icon: const Icon(Icons.delete_outline, size: 16),
-                    label: const Text('Очистить',
-                        style: TextStyle(fontSize: 12)),
                   ),
                 ],
               ),
             ),
-
             Container(
               height: 250,
               decoration: BoxDecoration(
-                color: Colors.black,
-                border: Border(top: BorderSide(color: Colors.grey.shade400)),
+                color: Colors.black.withValues(alpha: 0.8),
+                border: Border(
+                  top: BorderSide(color: moonlight.withValues(alpha: 0.3)),
+                ),
               ),
               child: ListView.builder(
                 controller: _scrollController,
@@ -360,6 +502,36 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildNeonIconButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    final isEnabled = onPressed != null;
+
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16, color: isEnabled ? moonlight : Colors.grey),
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          color: isEnabled ? Colors.white : Colors.grey,
+        ),
+      ),
+      style: TextButton.styleFrom(
+        backgroundColor: isEnabled ? neonPurple.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.1),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(
+            color: isEnabled ? neonPurple.withValues(alpha: 0.5) : Colors.transparent,
+          ),
+        ),
+      ),
+    );
+  }
+
   Color _getLogColor(String line) {
     final lower = line.toLowerCase();
     if (lower.contains('error') || lower.contains('fail')) {
@@ -371,7 +543,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (lower.contains('connected') ||
         lower.contains('opened') ||
         lower.contains('listening')) {
-      return Colors.green.shade300;
+      return neonCyan;
     }
     if (lower.contains('[udp]')) {
       return Colors.orange.shade200;
