@@ -26,6 +26,11 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     companion object {
         private const val TAG = "OlcrtcPlugin"
+        private const val SOCKS_PORT = 10808L
+        private const val READY_TIMEOUT_MS = 60_000L
+        private const val LIVENESS_INTERVAL_MS = 30_000L
+        private const val LIVENESS_TIMEOUT_MS = 90_000L
+        private const val LIVENESS_FAILURES = 3L
         lateinit var instance: OlcrtcPlugin
             private set
     }
@@ -82,7 +87,11 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         methodChannel.setMethodCallHandler(null)
         logSink = null
         vpnEventSink = null
-        try { Mobile.stop() } catch (e: Exception) { Log.e(TAG, "stop error", e) }
+        if (OlcrtcLifecyclePolicy.shouldStopNative(OlcrtcStopReason.FlutterEngineDetached)) {
+            stopOlcrtc(OlcrtcStopReason.FlutterEngineDetached)
+        } else {
+            Log.i(TAG, "Flutter engine detached; keeping olcrtc running for VPN service")
+        }
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -115,10 +124,15 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                             Mobile.setDebug(true)
                             Mobile.setTransport("datachannel")
                             Mobile.setSocksListenHost("127.0.0.1")
-                            Mobile.start(carrier, roomId, clientId, key, 10808L, "", "")
+                            Mobile.setLivenessOptions(
+                                LIVENESS_INTERVAL_MS,
+                                LIVENESS_TIMEOUT_MS,
+                                LIVENESS_FAILURES
+                            )
+                            Mobile.start(carrier, roomId, clientId, key, SOCKS_PORT, "", "")
 
                             Log.i(TAG, "olcrtc start() called, waiting for ready...")
-                            Mobile.waitReady(60000L)
+                            Mobile.waitReady(READY_TIMEOUT_MS)
 
                             Log.i(TAG, "olcrtc started successfully")
                             mainHandler.post { result.success(true) }
@@ -143,9 +157,7 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "stop" -> {
                 bgExecutor.submit {
                     try {
-                        Log.i(TAG, "Stopping olcrtc...")
-                        Mobile.stop()
-                        Log.i(TAG, "olcrtc stopped")
+                        stopOlcrtc(OlcrtcStopReason.UserRequest)
                         mainHandler.post { result.success(true) }
                     } catch (e: Exception) {
                         Log.e(TAG, "stop error", e)
@@ -158,5 +170,16 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
             else -> result.notImplemented()
         }
+    }
+
+    private fun stopOlcrtc(reason: OlcrtcStopReason) {
+        if (!OlcrtcLifecyclePolicy.shouldStopNative(reason)) {
+            Log.i(TAG, "Skipping olcrtc stop for $reason")
+            return
+        }
+
+        Log.i(TAG, "Stopping olcrtc: $reason")
+        Mobile.stop()
+        Log.i(TAG, "olcrtc stopped")
     }
 }

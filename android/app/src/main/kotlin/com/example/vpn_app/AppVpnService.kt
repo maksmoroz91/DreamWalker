@@ -10,6 +10,7 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import mobile.Mobile
 
 class AppVpnService : VpnService() {
     companion object {
@@ -34,21 +35,40 @@ class AppVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        stopTunnel(OlcrtcStopReason.VpnServiceStopped)
         VpnServiceInstance.clear()
         super.onDestroy()
         Log.i(TAG, "VpnService destroyed")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            "CONNECT"    -> connect()
-            "DISCONNECT" -> disconnect()
+        return when (intent?.action) {
+            "CONNECT" -> {
+                connect()
+                START_STICKY
+            }
+            "DISCONNECT" -> {
+                disconnect()
+                START_NOT_STICKY
+            }
+            else -> {
+                Log.w(TAG, "Ignoring unknown start command: ${intent?.action}")
+                START_NOT_STICKY
+            }
         }
-        return START_STICKY
+    }
+
+    override fun onRevoke() {
+        Log.w(TAG, "VPN permission revoked")
+        stopTunnel(OlcrtcStopReason.VpnRevoked)
+        stopSelf()
+        super.onRevoke()
     }
 
     private fun connect() {
-        if (vpnInterface != null) disconnect()
+        if (vpnInterface != null || tun2socks != null) {
+            stopVpnRouting()
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIF_ID, buildNotification(),
@@ -88,23 +108,48 @@ class AppVpnService : VpnService() {
     }
 
     fun disconnect() {
+        stopTunnel(OlcrtcStopReason.VpnServiceStopped)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        Log.i(TAG, "VPN stopped")
+    }
+
+    private fun stopTunnel(reason: OlcrtcStopReason) {
+        stopVpnRouting()
+        stopOlcrtc(reason)
+    }
+
+    private fun stopVpnRouting() {
         running = false
 
         tun2socks?.stop()
         tun2socks = null
 
-
         try {
             vpnInterface?.close()
-            Log.i(TAG, "TUN interface closed")
+            if (vpnInterface != null) {
+                Log.i(TAG, "TUN interface closed")
+            }
         } catch (e: Exception) {
             Log.w(TAG, "close interface", e)
         }
         vpnInterface = null
+    }
 
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-        Log.i(TAG, "VPN stopped")
+    private fun stopOlcrtc(reason: OlcrtcStopReason) {
+        if (!OlcrtcLifecyclePolicy.shouldStopNative(reason)) {
+            Log.i(TAG, "Skipping olcrtc stop for $reason")
+            return
+        }
+
+        try {
+            if (Mobile.isRunning()) {
+                Mobile.stop()
+                Log.i(TAG, "olcrtc stopped after $reason")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "stop olcrtc after $reason", e)
+        }
     }
 
     private fun buildNotification(): Notification {
