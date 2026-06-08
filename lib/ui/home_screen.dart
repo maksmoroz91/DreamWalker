@@ -440,6 +440,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       letterSpacing: 0.5,
                     ),
                   ),
+                  if (_isLogsExpanded && _logs.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: moonlight.withValues(alpha: 0.5)),
+                      ),
+                      child: Text(
+                        '${_logs.length}',
+                        style: TextStyle(
+                          color: moonlight,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -516,16 +535,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         label,
         style: TextStyle(
           fontSize: 12,
-          color: isEnabled ? Colors.white : Colors.grey,
+          color: isEnabled ? moonlight : Colors.grey,
         ),
       ),
       style: TextButton.styleFrom(
-        backgroundColor: isEnabled ? neonPurple.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.1),
+        backgroundColor: Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: BorderSide(
-            color: isEnabled ? neonPurple.withValues(alpha: 0.5) : Colors.transparent,
+            color: isEnabled ? moonlight.withValues(alpha: 0.5) : Colors.grey.withValues(alpha: 0.3),
           ),
         ),
       ),
