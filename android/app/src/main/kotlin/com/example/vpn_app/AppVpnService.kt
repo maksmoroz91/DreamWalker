@@ -8,6 +8,8 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import mobile.Mobile
@@ -21,11 +23,17 @@ class AppVpnService : VpnService() {
         private const val SOCKS_SERVER = "127.0.0.1"
         private const val SOCKS_PORT = 10808
         private const val MTU = 1500
+        private const val RESTART_DEBOUNCE_MS = 5_000L
     }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var tun2socks: Tun2SocksRunner? = null
     private var running = false
+
+    @Volatile private var restartPending = false
+    private var lastRestartTime = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -50,6 +58,24 @@ class AppVpnService : VpnService() {
             "DISCONNECT" -> {
                 disconnect()
                 START_NOT_STICKY
+            }
+            "RESTART" -> {
+                val now = System.currentTimeMillis()
+                if (restartPending || (now - lastRestartTime) < RESTART_DEBOUNCE_MS) {
+                    Log.i(TAG, "RESTART debounced (already pending or too soon)")
+                    return START_STICKY
+                }
+                restartPending = true
+                lastRestartTime = now
+                Log.i(TAG, "Received RESTART command")
+
+                stopVpnRouting()
+
+                mainHandler.postDelayed({
+                    restartPending = false
+                    connect()
+                }, 1000)
+                START_STICKY
             }
             else -> {
                 Log.w(TAG, "Ignoring unknown start command: ${intent?.action}")
@@ -161,16 +187,16 @@ class AppVpnService : VpnService() {
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, NOTIF_CHANNEL_ID)
-                .setContentTitle("VPN подключен")
-                .setContentText("Трафик защищен")
+                .setContentTitle("VPN активен")
+                .setContentText("Соединение установлено")
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
                 .setContentIntent(pi)
                 .build()
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
-                .setContentTitle("VPN подключен")
-                .setContentText("Трафик защищен")
+                .setContentTitle("VPN активен")
+                .setContentText("Соединение установлено")
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
                 .setContentIntent(pi)
                 .build()
