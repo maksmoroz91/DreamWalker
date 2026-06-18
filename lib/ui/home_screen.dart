@@ -13,7 +13,7 @@ class HomeScreen extends StatefulWidget {
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late OlcrtcClient _olcrtc;
   late TunnelInterface _tunnel;
 
@@ -37,7 +37,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _olcrtc = OlcrtcClient();
+
+    _olcrtc.initLogs();
+
     _tunnel = TunnelInterface(_olcrtc);
 
     _glowController = AnimationController(
@@ -77,10 +82,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         }
       }
     });
+
+    _checkVpnStatus();
+
+    _tunnel.statusStream.listen((isActive) {
+      if (isActive != _isConnected) {
+        setState(() {
+          _isConnected = isActive;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _glowController.dispose();
     _scrollController.dispose();
     _tunnel.dispose();
@@ -251,6 +267,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final roomId = data.text!.trim();
     await _olcrtc.saveCustomRoomId(roomId);
     _showSnack('Ссылка сохранена');
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkVpnStatus();
+    }
+  }
+
+  Future<void> _checkVpnStatus() async {
+    try {
+      final bool? isActive = await const MethodChannel('vpn_service').invokeMethod<bool>('getStatus');
+      if (isActive != null && isActive != _isConnected) {
+        setState(() {
+          _isConnected = isActive;
+        });
+      }
+    } catch (e) {
+      _showSnack('Ошибка при проверке статуса VPN: $e');
+    }
   }
 
   @override

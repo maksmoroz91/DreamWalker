@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
 class OlcrtcClient {
   static const _channel = MethodChannel('olcrtc_channel');
@@ -10,11 +11,17 @@ class OlcrtcClient {
 
   StreamSubscription? _logSub;
   final _logController = StreamController<String>.broadcast();
-
   Stream<String> get logs => _logController.stream;
 
   static const socksHost = '127.0.0.1';
   static const socksPort = 10808;
+
+  void initLogs() {
+    _logSub ??= _logChannel.receiveBroadcastStream().listen(
+          (event) { if (event is String) _logController.add(event); },
+      onError: (e) => _logController.addError(e),
+    );
+  }
 
   Future<String> getDeviceId() async {
     return await _channel.invokeMethod<String>('getDeviceId') ?? 'device-unknown';
@@ -35,6 +42,8 @@ class OlcrtcClient {
   }
 
   Future<void> start() async {
+    initLogs();
+
     try {
       final roomId  = await getActiveRoomId();
       final key     = dotenv.env['OLCRTC_KEY']    ?? '';
@@ -46,21 +55,15 @@ class OlcrtcClient {
 
       final clientId = await getDeviceId();
 
-      _logSub = _logChannel.receiveBroadcastStream().listen(
-            (event) { if (event is String) _logController.add(event); },
-        onError: (e) => _logController.addError(e),
-      );
-
       await _channel.invokeMethod('start', {
         'carrier':  carrier,
         'roomId':   roomId,
         'clientId': clientId,
         'key':      key,
       });
-
     } catch (e, stack) {
-      print('OlcrtcClient.start error: $e');
-      print(stack);
+      debugPrint('OlcrtcClient.start error: $e');
+      debugPrintStack(stackTrace: stack);
       rethrow;
     }
   }
