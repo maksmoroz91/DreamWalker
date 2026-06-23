@@ -1,78 +1,62 @@
 package com.example.vpn_app
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
+import androidx.core.content.edit
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import mobile.Mobile
-import java.util.concurrent.Executors
-import androidx.core.content.edit
 
+/**
+ * Тонкая обёртка над OlcrtcNativeRunner. Раньше вся логика старта/стопа/
+ * watchdog жила прямо здесь и привязывалась к жизни FlutterEngine; теперь
+ * она вынесена в process-wide OlcrtcNativeRunner, чтобы TileService мог
+ * управлять тем же туннелем и тем же watchdog'ом без открытия приложения.
+ * Контракт MethodChannel/EventChannel ("olcrtc_channel", "olcrtc_logs",
+ * "vpn_events") не менялся -- Dart-сторона не требует изменений.
+ */
 class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private lateinit var context: Context
     private lateinit var methodChannel: MethodChannel
     private lateinit var logChannel: EventChannel
     private var logSink: EventChannel.EventSink? = null
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private val bgExecutor = Executors.newSingleThreadExecutor()
-    private val pendingLogsForSink = ArrayDeque<String>()
-    private val sinkBufferSize = 500
-
-    private val logListener: (String) -> Unit = { line ->
-        mainHandler.post {
-            if (logSink != null) {
-                logSink?.success(line)
-            } else {
-                pendingLogsForSink.addLast(line)
-                if (pendingLogsForSink.size > sinkBufferSize) {
-                    pendingLogsForSink.removeFirst()
-                }
-            }
-        }
-    }
+    private var vpnEventSink: EventChannel.EventSink? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
+
         methodChannel = MethodChannel(binding.binaryMessenger, "olcrtc_channel")
         methodChannel.setMethodCallHandler(this)
 
         logChannel = EventChannel(binding.binaryMessenger, "olcrtc_logs")
         logChannel.setStreamHandler(object : EventChannel.StreamHandler {
-            override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
-                logSink = events
-                mainHandler.post {
-                    while (pendingLogsForSink.isNotEmpty()) {
-                        logSink?.success(pendingLogsForSink.removeFirst())
-                    }
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink) { logSink = events }
+            override fun onCancel(arguments: Any?) { logSink = null }
+        })
+
+        EventChannel(binding.binaryMessenger, "vpn_events")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    vpnEventSink = events
                 }
-            }
-            override fun onCancel(arguments: Any?) {
-                logSink = null
-            }
-        })
+                override fun onCancel(arguments: Any?) { vpnEventSink = null }
+            })
 
-
-        OlcrtcLogManager.addListener(logListener)
-
-        val statusChannel = EventChannel(binding.binaryMessenger, "vpn_status")
-        statusChannel.setStreamHandler(object : EventChannel.StreamHandler {
-            override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
-                AppVpnService.statusSink = events
-                events.success(AppVpnService.isActive)
-            }
-            override fun onCancel(arguments: Any?) {
-                AppVpnService.statusSink = null
-            }
-        })
+        OlcrtcNativeRunner.ensureInitialized(context)
+        OlcrtcNativeRunner.logListener = { line -> logSink?.success(line) }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         methodChannel.setMethodCallHandler(null)
         logSink = null
-        OlcrtcLogManager.removeListener(logListener)
+        vpnEventSink = null
+        OlcrtcNativeRunner.logListener = null
+
+        if (OlcrtcLifecyclePolicy.shouldStopNative(OlcrtcStopReason.FlutterEngineDetached)) {
+            OlcrtcNativeRunner.stop(OlcrtcStopReason.FlutterEngineDetached)
+        } else {
+            android.util.Log.i("OlcrtcPlugin", "Flutter engine detached; keeping olcrtc running for VPN service")
+        }
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -86,20 +70,30 @@ class OlcrtcPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 }
                 result.success("device-${id.take(8)}")
             }
+
             "start" -> {
-                result.success(true)
-            }
-            "stop" -> {
-                bgExecutor.submit {
-                    try {
-                        if (Mobile.isRunning()) Mobile.stop()
-                        mainHandler.post { result.success(true) }
-                    } catch (e: Exception) {
-                        mainHandler.post { result.error("STOP_FAILED", e.message, null) }
+                val carrier = call.argument<String>("carrier") ?: "jitsi"
+                val roomId = call.argument<String>("roomId") ?: ""
+                val clientId = call.argument<String>("clientId") ?: ""
+                val key = call.argument<String>("key") ?: ""
+
+                OlcrtcNativeRunner.start(context, carrier, roomId, clientId, key) { success, error ->
+                    if (success) {
+                        result.success(true)
+                    } else {
+                        result.error("START_FAILED", error, null)
                     }
                 }
             }
-            "isRunning" -> result.success(Mobile.isRunning())
+
+            "stop" -> {
+                OlcrtcNativeRunner.stop(OlcrtcStopReason.UserRequest) {
+                    result.success(true)
+                }
+            }
+
+            "isRunning" -> result.success(OlcrtcNativeRunner.isRunning())
+
             else -> result.notImplemented()
         }
     }

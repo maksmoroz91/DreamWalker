@@ -9,20 +9,20 @@ class TunnelInterface {
 
   final OlcrtcClient olcrtc;
   bool _running = false;
+
   StreamSubscription? _statusSub;
   final _statusController = StreamController<bool>.broadcast();
-
   Stream<bool> get statusStream => _statusController.stream;
 
   TunnelInterface(this.olcrtc) {
-    _statusSub = _statusChannel.receiveBroadcastStream().listen(
-          (event) {
-        if (event is bool) {
-          _running = event;
-          _statusController.add(event);
-        }
-      },
-    );
+    _statusSub = _statusChannel.receiveBroadcastStream().listen((event) {
+      if (event is bool) {
+        _running = event;
+        _statusController.add(event);
+      }
+    }, onError: (e) {
+      debugPrint('vpn_status stream error: $e');
+    });
   }
 
   Future<bool> start() async {

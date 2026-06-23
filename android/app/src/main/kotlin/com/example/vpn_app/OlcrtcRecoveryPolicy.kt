@@ -1,25 +1,18 @@
 package com.example.vpn_app
 
 object OlcrtcRecoveryPolicy {
-    private val rules = listOf(
+    private val terminalRules = listOf(
         listOf("frame too large") to "smux_desync_frame_too_large",
-        listOf("handshake on reconnect failed") to "handshake_on_reconnect_failed",
-        listOf("openstream failed") to "smux_open_stream_failed",
-        listOf("wait jingle failed") to "jingle_session_initiate_failed",
-        listOf("jitsi reconnect failed") to "jitsi_reconnect_failed",
-
-        listOf("rejoin failed", "context deadline exceeded") to "xmpp_deadline_exceeded",
-        listOf("full reconnect", "rejoin failed") to "full_reconnect_exhausted",
-        listOf("full reconnect", "wait reinitiate failed") to "full_reconnect_exhausted",
+        listOf("conference end") to "jitsi_conference_ended",
+        listOf("exhausted", "handshake attempts") to "handshake_retry_exhausted",
     )
-
-    fun shouldRestartNative(logLine: String): Boolean =
-        restartReason(logLine) != null
 
     fun restartReason(logLine: String): String? {
         val line = logLine.lowercase()
-        return rules.firstOrNull { (patterns, _) ->
-            patterns.all { line.contains(it) }
-        }?.second
+
+        terminalRules.firstOrNull { (patterns, _) -> patterns.all { line.contains(it) } }
+            ?.let { return it.second }
+
+        return null
     }
 }
