@@ -1,17 +1,29 @@
-# vpn_app
+# 🌙 DreamWalker
 
-A new Flutter project.
+## ⚠️ Дисклеймер
 
-## Getting Started
+> **Этот проект создан исключительно для изучения технологий WebRTC, TUN-интерфейсов и сетевой маршрутизации. Автор не рекомендует использовать его для обхода сетевых ограничений.**
 
-This project is a starting point for a Flutter application.
+### 💡 Полезный инструмент: [Поиск доменов с Jitsi Meet](https://github.com/maksmoroz91/jitsi-scanner)
 
-A few resources to get you started if this is your first Flutter project:
+---
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### Клиентская часть:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. Создайте файл `.env` в корне проекта на основе `.env.example`:
+   ```bash
+   cp .env.example .env
+    ```
+
+2. Сборка файла .apk
+    ```bash
+    flutter clean
+    flutter pub get
+    flutter build apk --release
+    ```
+
+
+### Серверная часть:
+⚠️ Должен быть поднят xray с конфигом по пути ```/usr/local/etc/xray/config.json```
+
+На сервере запустить скрипт через bash [```scripts/server.sh```](scripts/server.sh)
