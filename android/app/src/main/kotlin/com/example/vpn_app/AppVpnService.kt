@@ -30,7 +30,6 @@ class AppVpnService : VpnService() {
         private const val WAKE_LOCK_TAG = "DreamWalker:VpnWakeLock"
         private const val WAKE_LOCK_TIMEOUT_MS = 24 * 60 * 60 * 1000L
         private val mainHandler = Handler(Looper.getMainLooper())
-
         var isActive: Boolean = false
         var statusSink: EventChannel.EventSink? = null
 
@@ -107,12 +106,9 @@ class AppVpnService : VpnService() {
         if (vpnInterface != null || tun2socks != null) {
             stopVpnRouting()
         }
-
         acquireWakeLock()
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIF_ID, buildNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIF_ID, buildNotification())
         }
@@ -125,7 +121,7 @@ class AppVpnService : VpnService() {
             .addDnsServer("1.1.1.1")
             .addDnsServer("1.0.0.1")
             .addDisallowedApplication(packageName)
-            .setMtu(1500)
+            .setMtu(MTU)
             .setBlocking(true)
 
         vpnInterface = builder.establish() ?: run {
@@ -136,6 +132,22 @@ class AppVpnService : VpnService() {
         }
 
         running = true
+
+        isActive = true
+        notifyStatusChanged()
+        requestTileUpdate()
+        Log.i(TAG, "VPN interface established, waiting for olcrtc to start SOCKS5...")
+    }
+    fun startTun2SocksIfNeeded() {
+        if (vpnInterface == null) {
+            Log.w(TAG, "Cannot start tun2socks: vpnInterface is null")
+            return
+        }
+        if (tun2socks != null) {
+            Log.i(TAG, "tun2socks already running")
+            return
+        }
+        Log.i(TAG, "Starting tun2socks now (SOCKS5 is ready)...")
         tun2socks = Tun2SocksRunner(this)
         tun2socks?.start(
             tunFd = vpnInterface!!,
@@ -143,12 +155,6 @@ class AppVpnService : VpnService() {
             socksPort = SOCKS_PORT,
             mtu = MTU
         )
-
-        isActive = true
-        notifyStatusChanged()
-        requestTileUpdate()
-
-        Log.i(TAG, "VPN + tun2socks started")
     }
 
     fun disconnect() {
@@ -156,14 +162,12 @@ class AppVpnService : VpnService() {
         notifyStatusChanged()
         requestTileUpdate()
         releaseWakeLock()
-
         Thread {
             try {
                 stopTunnel()
             } catch (e: Exception) {
                 Log.w(TAG, "Error in stopTunnel", e)
             }
-
             mainHandler.post {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()

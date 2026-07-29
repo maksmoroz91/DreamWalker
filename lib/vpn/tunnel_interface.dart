@@ -12,6 +12,7 @@ class TunnelInterface {
 
   StreamSubscription? _statusSub;
   final _statusController = StreamController<bool>.broadcast();
+
   Stream<bool> get statusStream => _statusController.stream;
 
   TunnelInterface(this.olcrtc) {
@@ -27,8 +28,12 @@ class TunnelInterface {
 
   Future<bool> start() async {
     try {
-      await olcrtc.start();
       await _vpnServiceChannel.invokeMethod('start');
+
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      await olcrtc.start();
+
       _running = true;
       return true;
     } catch (e) {

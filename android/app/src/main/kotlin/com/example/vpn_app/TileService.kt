@@ -3,6 +3,8 @@ package com.example.vpn_app
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
@@ -15,48 +17,47 @@ class TileService : TileService() {
     override fun onClick() {
         super.onClick()
         val isCurrentlyActive = AppVpnService.isActive
-
         if (isCurrentlyActive) {
             disconnect()
             return
         }
-
         if (VpnService.prepare(this) != null) {
             openAppForPermission()
             return
         }
-
         connectDirectly()
     }
 
     private fun connectDirectly() {
         setTileState(connecting = true)
-
         val config = OlcrtcConfig.load(applicationContext)
         if (config == null) {
-            Log.e(TAG, "Cannot start VPN from tile: invalid/missing config (.env or roomId)")
+            Log.e(TAG, "Cannot start VPN from tile: invalid/missing config")
             setTileState(connecting = false, active = false)
             return
         }
 
-        val clientId = getDeviceIdSync()
+        startVpnService("CONNECT")
 
-        OlcrtcNativeRunner.start(
-            context = applicationContext,
-            carrier = config.carrier,
-            roomId = config.roomId,
-            clientId = clientId,
-            key = config.key,
-        ) { success, error ->
-            if (success) {
-                Log.i(TAG, "olcrtc started from tile, starting AppVpnService")
-                startVpnService("CONNECT")
-                setTileState(connecting = false, active = true)
-            } else {
-                Log.e(TAG, "olcrtc failed to start from tile: $error")
-                setTileState(connecting = false, active = false)
+        Handler(Looper.getMainLooper()).postDelayed({
+            val clientId = getDeviceIdSync()
+            OlcrtcNativeRunner.start(
+                context = applicationContext,
+                carrier = config.carrier,
+                roomId = config.roomId,
+                clientId = clientId,
+                key = config.key,
+            ) { success, error ->
+                if (success) {
+                    Log.i(TAG, "olcrtc started from tile successfully")
+                    setTileState(connecting = false, active = true)
+                } else {
+                    Log.e(TAG, "olcrtc failed to start from tile: $error")
+                    setTileState(connecting = false, active = false)
+                    startVpnService("DISCONNECT") // Откат, если не вышло
+                }
             }
-        }
+        }, 1000)
     }
 
     private fun disconnect() {

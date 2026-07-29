@@ -25,7 +25,6 @@ object OlcrtcNativeRunner {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val bgExecutor = Executors.newSingleThreadExecutor()
     private val watchdogExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
-
     private lateinit var appContext: Context
     @Volatile private var initialized = false
     @Volatile var logListener: ((String) -> Unit)? = null
@@ -80,10 +79,8 @@ object OlcrtcNativeRunner {
         onResult: (success: Boolean, error: String?) -> Unit,
     ) {
         ensureInitialized(context)
-
         val config = OlcrtcStartConfig(carrier, roomId, clientId, key)
         currentStartConfig = config
-
         bgExecutor.submit {
             try {
                 stopNativeQuietly()
@@ -114,7 +111,6 @@ object OlcrtcNativeRunner {
         Mobile.setDebug(true)
         Mobile.setTransport("datachannel")
         Mobile.setSocksListenHost("127.0.0.1")
-
         Mobile.start(
             config.carrier,
             config.roomId,
@@ -124,14 +120,15 @@ object OlcrtcNativeRunner {
             "",
             ""
         )
-
         Log.i(TAG, "olcrtc start() called, waiting for ready...")
         Mobile.waitReady(READY_TIMEOUT_MS)
 
         if (Mobile.isRunning()) {
+            Log.i(TAG, "olcrtc is running, triggering tun2socks start")
+            VpnServiceInstance.get()?.startTun2SocksIfNeeded()
             startWatchdog()
         } else {
-            Log.w(TAG, "Mobile.isRunning() == false after start, skipping watchdog")
+            Log.w(TAG, "Mobile.isRunning() == false after start, skipping watchdog and tun2socks")
         }
     }
 
@@ -158,10 +155,8 @@ object OlcrtcNativeRunner {
         }
         tunnelRestartPending = true
         lastTunnelRestartTime = now
-
         Log.w(TAG, "Requesting full tunnel restart: $reason")
         emitLog("Restarting tunnel: $reason")
-
         stopWatchdog()
 
         val config = currentStartConfig
@@ -176,7 +171,6 @@ object OlcrtcNativeRunner {
             try {
                 stopNativeQuietly()
                 Thread.sleep(1500)
-
                 for (attempt in 1..OLCRTC_MAX_RETRIES) {
                     try {
                         Log.i(TAG, "olcrtc restart attempt $attempt/$OLCRTC_MAX_RETRIES after: $reason")
@@ -231,13 +225,11 @@ object OlcrtcNativeRunner {
     private fun startWatchdog() {
         stopWatchdog()
         Log.i(TAG, "Watchdog started (interval=${WATCHDOG_INTERVAL_MS}ms, threshold=$WATCHDOG_FAIL_THRESHOLD)")
-
         watchdogJob = watchdogExecutor.scheduleWithFixedDelay({
             if (tunnelRestartPending) {
                 Log.d(TAG, "Watchdog skip: restart already pending")
                 return@scheduleWithFixedDelay
             }
-
             if (Mobile.isRunning()) {
                 if (watchdogFailures > 0) {
                     Log.i(TAG, "Watchdog: olcrtc recovered (failures reset)")
@@ -246,7 +238,6 @@ object OlcrtcNativeRunner {
             } else {
                 watchdogFailures++
                 Log.w(TAG, "Watchdog: olcrtc not running ($watchdogFailures/$WATCHDOG_FAIL_THRESHOLD)")
-
                 if (watchdogFailures >= WATCHDOG_FAIL_THRESHOLD) {
                     watchdogFailures = 0
                     requestFullTunnelRestart("watchdog_olcrtc_dead")
